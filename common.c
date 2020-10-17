@@ -33,7 +33,7 @@ int parse_ip(struct sockaddr_in *addr, char *ip_str) {
   in_addr_t ip = inet_addr(ip_str);
   if (ip == -1) return -1;
 
-  memset(addr, 0, sizeof(addr));
+  memset(addr, 0, sizeof(*addr));
   addr->sin_family = AF_INET;
   addr->sin_addr.s_addr = ip;
 
