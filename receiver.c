@@ -110,7 +110,7 @@ void handle_srtla_data(int fd) {
   // Resend SRTLA keep-alive packets to the sender
   if (is_srtla_keepalive(buf)) {
     addr_len = sizeof(srtla_addr);
-    int ret = sendto(fd, &buf, n, MSG_CONFIRM, (struct sockaddr *) &srtla_addr, addr_len);
+    sendto(fd, &buf, n, MSG_CONFIRM, (struct sockaddr *) &srtla_addr, addr_len);
     return;
   }
 

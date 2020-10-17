@@ -192,7 +192,7 @@ int open_conns(char *source_ip_file) {
   size_t line_len = 0;
   while(getline(&line, &line_len, config) >= 0) {
     char *nl;
-    if (nl = strchr(line, '\n')) {
+    if ((nl = strchr(line, '\n'))) {
       *nl = '\0';
     }
 
