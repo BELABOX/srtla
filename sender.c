@@ -389,8 +389,7 @@ void handle_srtla_data(conn_t *c) {
   } // switch
 
   socklen_t addr_len = sizeof(local_peer);
-  int ret = sendto(listenfd, &buf, n, MSG_CONFIRM, (struct sockaddr *) &local_peer, addr_len);
-  assert(ret == n);
+  sendto(listenfd, &buf, n, MSG_CONFIRM, (struct sockaddr *) &local_peer, addr_len);
 }
 
 int main(int argc, char **argv) {
