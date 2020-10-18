@@ -65,7 +65,7 @@ typedef struct conn {
 } conn_t;
 
 int listenfd;
-struct sockaddr_in remote_addr, local_peer;
+struct sockaddr_in srtla_addr, srt_addr;
 conn_t *conns = NULL;
 fd_set active_fds;
 int max_act_fd = -1;
@@ -131,8 +131,8 @@ void send_keepalive(conn_t *c) {
   debug("sending keepalive via %p\n", c);
   uint16_t pkt = htobe16(SRTLA_TYPE_KEEPALIVE);
   // ignoring the result on purpose
-  socklen_t addr_len = sizeof(remote_addr);
-  sendto(c->fd, &pkt, sizeof(pkt), MSG_CONFIRM, (struct sockaddr *) &remote_addr, addr_len);
+  socklen_t addr_len = sizeof(srtla_addr);
+  sendto(c->fd, &pkt, sizeof(pkt), MSG_CONFIRM, (struct sockaddr *) &srtla_addr, addr_len);
 }
 
 void send_keepalive_all() {
@@ -272,13 +272,13 @@ conn_t *select_conn() {
 
 void handle_srt_data(int fd) {
   char buf[MTU];
-  socklen_t addr_len = sizeof(local_peer);
-  int n = recvfrom(fd, &buf, MTU, MSG_WAITALL, (struct sockaddr *) &local_peer, &addr_len);
+  socklen_t addr_len = sizeof(srt_addr);
+  int n = recvfrom(fd, &buf, MTU, MSG_WAITALL, (struct sockaddr *) &srt_addr, &addr_len);
 
   conn_t *c = select_conn();
   if (c) {
     int32_t sn = get_srt_sn(buf);
-    int ret = sendto(c->fd, &buf, n, MSG_CONFIRM, (struct sockaddr *) &remote_addr, addr_len);
+    int ret = sendto(c->fd, &buf, n, MSG_CONFIRM, (struct sockaddr *) &srtla_addr, addr_len);
     if (ret == n) {
       if (sn >= 0) {
         reg_pkt(c, sn);
@@ -388,8 +388,8 @@ void handle_srtla_data(conn_t *c) {
       return; // don't send to SRT
   } // switch
 
-  socklen_t addr_len = sizeof(local_peer);
-  sendto(listenfd, &buf, n, MSG_CONFIRM, (struct sockaddr *) &local_peer, addr_len);
+  socklen_t addr_len = sizeof(srt_addr);
+  sendto(listenfd, &buf, n, MSG_CONFIRM, (struct sockaddr *) &srt_addr, addr_len);
 }
 
 int main(int argc, char **argv) {
@@ -419,7 +419,7 @@ int main(int argc, char **argv) {
   signal(SIGALRM, alarm_handler);
   alarm(1);
 
-  int ret = parse_ip_port(&remote_addr, argv[2], argv[3]);
+  int ret = parse_ip_port(&srtla_addr, argv[2], argv[3]);
   if (ret != 0) {
     fprintf(stderr, "Failed to parse the target IP and/or port\n\n");
     exit_help();
