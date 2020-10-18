@@ -381,7 +381,7 @@ void handle_srtla_data(conn_t *c) {
         debug("  ack %d\n", id);
         register_srtla_ack(id);
       }
-      return;
+      return; // don't send to SRT
     }
     case SRTLA_TYPE_KEEPALIVE:
       debug("got keepalive from %p\n", c);
