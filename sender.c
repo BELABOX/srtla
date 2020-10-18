@@ -374,12 +374,14 @@ void handle_srtla_data(conn_t *c) {
       break;
     }
     case SRTLA_TYPE_ACK: {
+      debug("got a srtla ack from %p\n", c);
       uint32_t *acks = (uint32_t *)buf;
       for (int i = 1; i < n/4; i++) {
         uint32_t id = be32toh(acks[i]);
+        debug("  ack %d\n", id);
         register_srtla_ack(id);
       }
-      // falling through on purpose
+      return;
     }
     case SRTLA_TYPE_KEEPALIVE:
       debug("got keepalive from %p\n", c);
