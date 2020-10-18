@@ -69,10 +69,10 @@ struct sockaddr_in remote_addr, local_peer;
 conn_t *conns = NULL;
 fd_set active_fds;
 int max_act_fd = -1;
-int next_keepalive = 0;
+int do_send_keepalive = 0;
 
 void alarm_handler() {
-  next_keepalive = 1;
+  do_send_keepalive = 1;
 }
 
 void print_help() {
@@ -437,9 +437,9 @@ int main(int argc, char **argv) {
 
     ret = select(FD_SETSIZE, &read_fds, NULL, NULL, NULL);
 
-    if (send_keepalive) {
+    if (do_send_keepalive) {
       send_keepalive_all();
-      next_keepalive = 0;
+      do_send_keepalive = 0;
       alarm(1);
     }
 
