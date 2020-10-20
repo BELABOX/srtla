@@ -76,7 +76,7 @@ void alarm_handler() {
 }
 
 void print_help() {
-  fprintf(stderr, "Syntax: sender SRT_LISTEN_PORT SRTLA_HOST SRTLA_PORT\n");
+  fprintf(stderr, "Syntax: srtla_send SRT_LISTEN_PORT SRTLA_HOST SRTLA_PORT\n");
 }
 
 int get_sec(time_t *ts) {

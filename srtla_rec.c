@@ -49,7 +49,7 @@ fd_set active_fds;
 int max_act_fd = -1;
 
 void print_help() {
-  fprintf(stderr, "Syntax: receiver SRTLA_LISTEN_PORT SRT_HOST SRT_PORT\n");
+  fprintf(stderr, "Syntax: srtla_rec SRTLA_LISTEN_PORT SRT_HOST SRT_PORT\n");
 }
 
 void handle_srt_data(int fd) {

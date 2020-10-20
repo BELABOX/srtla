@@ -1,10 +1,10 @@
 CFLAGS=-g -O2 -Wall
 
-all: sender receiver
+all: srtla_send srtla_rec
 
-sender: sender.o common.o
+srtla_send: srtla_send.o common.o
 
-receiver: receiver.o common.o
+srtla_rec: srtla_rec.o common.o
 
 clean:
-	rm -f *.o sender receiver
+	rm -f *.o srtla_send srtla_rec
