@@ -1,6 +1,6 @@
 /*
     srtla - SRT transport proxy with link aggregation
-    Copyright (C) 2020 BELAbox project
+    Copyright (C) 2020 BELABOX project
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU Affero General Public License as published by
