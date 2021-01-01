@@ -62,7 +62,8 @@ void handle_srt_data(int fd) {
   if (is_srt_ack(buf)) {
     // Broadcast SRT ACKs over all connections for timely delivery
     for (srtla_conn_t *c = srtla_conns; c != NULL; c = c->next) {
-      sendto(strla_fd, &buf, n, 0, (struct sockaddr *)&(c->addr), addr_len);
+      int ret = sendto(strla_fd, &buf, n, 0, (struct sockaddr *)&(c->addr), addr_len);
+      assert(ret == n);
     }
   } else {
     // send other packets over the most recently used SRTLA connection
@@ -110,7 +111,8 @@ void handle_srtla_data(int fd) {
   // Resend SRTLA keep-alive packets to the sender
   if (is_srtla_keepalive(buf)) {
     addr_len = sizeof(srtla_addr);
-    sendto(fd, &buf, n, 0, (struct sockaddr *) &srtla_addr, addr_len);
+    int ret = sendto(fd, &buf, n, 0, (struct sockaddr *) &srtla_addr, addr_len);
+    assert(ret == 0);
     return;
   }
 
