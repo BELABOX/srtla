@@ -112,7 +112,7 @@ void handle_srtla_data(int fd) {
   if (is_srtla_keepalive(buf)) {
     addr_len = sizeof(srtla_addr);
     int ret = sendto(fd, &buf, n, 0, (struct sockaddr *) &srtla_addr, addr_len);
-    assert(ret == 0);
+    assert(ret == n);
     return;
   }
 
