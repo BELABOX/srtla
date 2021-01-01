@@ -132,7 +132,7 @@ void send_keepalive(conn_t *c) {
   uint16_t pkt = htobe16(SRTLA_TYPE_KEEPALIVE);
   // ignoring the result on purpose
   socklen_t addr_len = sizeof(srtla_addr);
-  sendto(c->fd, &pkt, sizeof(pkt), MSG_CONFIRM, (struct sockaddr *) &srtla_addr, addr_len);
+  sendto(c->fd, &pkt, sizeof(pkt), 0, (struct sockaddr *) &srtla_addr, addr_len);
 }
 
 void send_keepalive_all() {
@@ -273,12 +273,12 @@ conn_t *select_conn() {
 void handle_srt_data(int fd) {
   char buf[MTU];
   socklen_t addr_len = sizeof(srt_addr);
-  int n = recvfrom(fd, &buf, MTU, MSG_WAITALL, (struct sockaddr *) &srt_addr, &addr_len);
+  int n = recvfrom(fd, &buf, MTU, 0, (struct sockaddr *) &srt_addr, &addr_len);
 
   conn_t *c = select_conn();
   if (c) {
     int32_t sn = get_srt_sn(buf);
-    int ret = sendto(c->fd, &buf, n, MSG_CONFIRM, (struct sockaddr *) &srtla_addr, addr_len);
+    int ret = sendto(c->fd, &buf, n, 0, (struct sockaddr *) &srtla_addr, addr_len);
     if (ret == n) {
       if (sn >= 0) {
         reg_pkt(c, sn);
@@ -344,7 +344,7 @@ void register_srt_ack(int32_t ack) {
 void handle_srtla_data(conn_t *c) {
   char buf[MTU];
 
-  int n = recvfrom(c->fd, &buf, MTU, MSG_WAITALL, NULL, NULL);
+  int n = recvfrom(c->fd, &buf, MTU, 0, NULL, NULL);
   get_sec(&c->last_rcvd);
 
   uint16_t packet_type = get_srt_type(buf);
@@ -389,7 +389,7 @@ void handle_srtla_data(conn_t *c) {
   } // switch
 
   socklen_t addr_len = sizeof(srt_addr);
-  sendto(listenfd, &buf, n, MSG_CONFIRM, (struct sockaddr *) &srt_addr, addr_len);
+  sendto(listenfd, &buf, n, 0, (struct sockaddr *) &srt_addr, addr_len);
 }
 
 int main(int argc, char **argv) {

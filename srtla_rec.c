@@ -55,18 +55,18 @@ void print_help() {
 void handle_srt_data(int fd) {
   char buf[MTU];
 
-  int n = recvfrom(fd, &buf, MTU, MSG_WAITALL, NULL, NULL);
+  int n = recvfrom(fd, &buf, MTU, 0, NULL, NULL);
   socklen_t addr_len = sizeof(srtla_addr);
 
   // ACK
   if (is_srt_ack(buf)) {
     // Broadcast SRT ACKs over all connections for timely delivery
     for (srtla_conn_t *c = srtla_conns; c != NULL; c = c->next) {
-      sendto(strla_fd, &buf, n, MSG_CONFIRM, (struct sockaddr *)&(c->addr), addr_len);
+      sendto(strla_fd, &buf, n, 0, (struct sockaddr *)&(c->addr), addr_len);
     }
   } else {
     // send other packets over the most recently used SRTLA connection
-    int ret = sendto(strla_fd, &buf, n, MSG_CONFIRM, (struct sockaddr *) &srtla_addr, addr_len);
+    int ret = sendto(strla_fd, &buf, n, 0, (struct sockaddr *) &srtla_addr, addr_len);
     assert(ret == n);
   }
 }
@@ -94,7 +94,7 @@ void register_packet(srtla_conn_t *c, int32_t sn) {
     ack.type = htobe32(SRTLA_TYPE_ACK << 16);
     memcpy(&ack.acks, &c->recv_log, sizeof(c->recv_log));
 
-    int ret = sendto(strla_fd, &ack, sizeof(ack), MSG_CONFIRM, (struct sockaddr *) &c->addr, sizeof(c->addr));
+    int ret = sendto(strla_fd, &ack, sizeof(ack), 0, (struct sockaddr *) &c->addr, sizeof(c->addr));
     assert(ret == sizeof(ack));
 
     c->recv_idx = 0;
@@ -105,12 +105,12 @@ void handle_srtla_data(int fd) {
   char buf[MTU];
 
   socklen_t addr_len = sizeof(srtla_addr);
-  int n = recvfrom(fd, &buf, MTU, MSG_WAITALL, (struct sockaddr *) &srtla_addr, &addr_len);
+  int n = recvfrom(fd, &buf, MTU, 0, (struct sockaddr *) &srtla_addr, &addr_len);
 
   // Resend SRTLA keep-alive packets to the sender
   if (is_srtla_keepalive(buf)) {
     addr_len = sizeof(srtla_addr);
-    sendto(fd, &buf, n, MSG_CONFIRM, (struct sockaddr *) &srtla_addr, addr_len);
+    sendto(fd, &buf, n, 0, (struct sockaddr *) &srtla_addr, addr_len);
     return;
   }
 
@@ -122,7 +122,7 @@ void handle_srtla_data(int fd) {
   }
 
   // Forward the packet to SRT
-  int ret = sendto(srt_fd, &buf, n, MSG_CONFIRM, (struct sockaddr *) &srt_addr, addr_len);
+  int ret = sendto(srt_fd, &buf, n, 0, (struct sockaddr *) &srt_addr, addr_len);
   assert(ret == n);
 }
 
