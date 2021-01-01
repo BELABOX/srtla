@@ -9,7 +9,7 @@ This application is experimental. Be prepared to troubleshoot it and experiment 
 Assumptions and prerequisites
 -----------------------------
 
-This tool assumes that data is streamed from a SRT *sender* in *caller* mode to a SRT *receiver* in *listener* mode. To get any benefit over using SRT directly, the *sender* should have 2 or more network links to the SRT listener (in the typical application, these would be internet-connected 4G modems). The sender needs to have [source routing](https://tldp.org/HOWTO/Adv-Routing-HOWTO/lartc.rpdb.simple.html) configured, as srtla uses `bind()` to map UDP sockets to a given connection. Only Linux is supported, however porting to other *nix platforms should be straightforward if needed.
+This tool assumes that data is streamed from a SRT *sender* in *caller* mode to a SRT *receiver* in *listener* mode. To get any benefit over using SRT directly, the *sender* should have 2 or more network links to the SRT listener (in the typical application, these would be internet-connected 4G modems). The sender needs to have [source routing](https://tldp.org/HOWTO/Adv-Routing-HOWTO/lartc.rpdb.simple.html) configured, as srtla uses `bind()` to map UDP sockets to a given connection. Only Linux is supported, however porting to other *nix platforms should be straightforward if needed. Update: `srtla_rec` has now been confirmed to work on Windows via WSL1.
 
 
 Building (both on the sender and the receiver)
