@@ -43,7 +43,7 @@ Let's assume that the receiver has IP address 10.0.0.1 and the sender has 2 (unr
 **Receiver**
 
     path/to/srtla/srtla_rec 5000 127.0.0.1 5002 &
-    path/to/srt/srt-live-transmit "srt://127.0.0.1:5002?mode=listener&lossmaxttl=40&latency=2000" "srt://0.0.0.0:5001?mode=listener"
+    path/to/srt/srt-live-transmit -st:yes "srt://127.0.0.1:5002?mode=listener&lossmaxttl=40&latency=2000" "srt://0.0.0.0:5001?mode=listener"
     
 Notes: `lossmaxttl` is a required option to allow packets to arrive out-of-order without immediately sending NAKs to ask for retransmission. Its value is the size of the receive window. Values between 10 and 50 are probably a reasonable starting point. The NAKs sent by SRT are used by srtla to balance the traffic between the links and lower `lossmaxttl` values will create a stronger bias towards using the faster networks disproportionately. If the window is too small, that may cause excessive retransmissions and it may prevent link aggregation from working by sending most of the traffic through a single link. If the window is too large, it may prevent timely retransmission of lost / late / corrupted packets and therefore data loss. `latency` (in ms) will determine the time available for retransmission and packet reordering (together with `lossmaxttl`).
 
