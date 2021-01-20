@@ -197,6 +197,7 @@ int open_conn(conn_t *c) {
   if (n > 0) {
     if (is_srtla_keepalive(buf)) {
       fprintf(stderr, "connected\n");
+      get_sec(&c->last_rcvd);
       return 0;
     }
   }
