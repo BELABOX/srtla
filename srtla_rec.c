@@ -64,12 +64,12 @@ void handle_srt_data(int fd) {
   if (is_srt_ack(buf)) {
     // Broadcast SRT ACKs over all connections for timely delivery
     for (srtla_conn_t *c = srtla_conns; c != NULL; c = c->next) {
-      int ret = sendto(strla_fd, &buf, n, 0, (struct sockaddr *)&(c->addr), addr_len);
+      int ret = sendto(strla_fd, &buf, n, 0, &c->addr, addr_len);
       assert(ret == n);
     }
   } else {
     // send other packets over the most recently used SRTLA connection
-    int ret = sendto(strla_fd, &buf, n, 0, (struct sockaddr *) &srtla_addr, addr_len);
+    int ret = sendto(strla_fd, &buf, n, 0, &srtla_addr, addr_len);
     assert(ret == n);
   }
 }
@@ -98,7 +98,7 @@ void register_packet(srtla_conn_t *c, int32_t sn) {
     ack.type = htobe32(SRTLA_TYPE_ACK << 16);
     memcpy(&ack.acks, &c->recv_log, sizeof(c->recv_log));
 
-    int ret = sendto(strla_fd, &ack, sizeof(ack), 0, (struct sockaddr *) &c->addr, sizeof(c->addr));
+    int ret = sendto(strla_fd, &ack, sizeof(ack), 0, &c->addr, sizeof(c->addr));
     assert(ret == sizeof(ack));
 
     c->recv_idx = 0;
