@@ -83,6 +83,7 @@ srtla_conn_t *get_conn(struct sockaddr *addr, size_t len) {
   srtla_conn_t *n = malloc(sizeof(srtla_conn_t));
   n->addr = *addr;
   n->next = srtla_conns;
+  n->recv_idx = 0;
   srtla_conns = n;
 
   return n;
