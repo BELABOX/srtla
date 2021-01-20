@@ -23,6 +23,7 @@
 #include <unistd.h>
 #include <time.h>
 #include <signal.h>
+#include <netdb.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -65,7 +66,7 @@ typedef struct conn {
 } conn_t;
 
 int listenfd;
-struct sockaddr_in srtla_addr, srt_addr;
+struct sockaddr srtla_addr, srt_addr;
 conn_t *conns = NULL;
 fd_set active_fds;
 int max_act_fd = -1;
@@ -132,7 +133,7 @@ void send_keepalive(conn_t *c) {
   uint16_t pkt = htobe16(SRTLA_TYPE_KEEPALIVE);
   // ignoring the result on purpose
   socklen_t addr_len = sizeof(srtla_addr);
-  sendto(c->fd, &pkt, sizeof(pkt), 0, (struct sockaddr *) &srtla_addr, addr_len);
+  sendto(c->fd, &pkt, sizeof(pkt), 0, &srtla_addr, addr_len);
 }
 
 void send_keepalive_all() {
@@ -146,48 +147,72 @@ void send_keepalive_all() {
   }
 }
 
-
 int open_conn(conn_t *c) {
-  int fd = socket(AF_INET, SOCK_DGRAM, 0);
-  if (fd < 0) {
+  if (c->fd >= 0) {
+    remove_active_fd(c->fd);
+    close(c->fd);
+    c->fd = -1;
+  }
+
+  // Print the connecting message
+  #define ADDR_BUF_SZ 50
+  char addr_buf[ADDR_BUF_SZ];
+  const char *addr = inet_ntop(c->src.sin_family, &c->src.sin_addr, addr_buf, ADDR_BUF_SZ);
+  fprintf(stderr, "Connecting from %s: ", addr);
+
+  // Set up the socket
+  c->fd = socket(AF_INET, SOCK_DGRAM, 0);
+  if (c->fd < 0) {
     perror("Failed to open socket");
     return -1;
   }
-
   struct timeval to;
   to.tv_sec = 1;
   to.tv_usec = 0;
-  int ret = setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &to, sizeof(to));
+  int ret = setsockopt(c->fd, SOL_SOCKET, SO_RCVTIMEO, &to, sizeof(to));
   if (ret != 0) {
     perror("Failed to set receive timeout");
-    close(fd);
+    close(c->fd);
     return -1;
   }
-  ret = setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &to, sizeof(to));
+  ret = setsockopt(c->fd, SOL_SOCKET, SO_SNDTIMEO, &to, sizeof(to));
   if (ret != 0) {
     perror("Failed to set send timeout");
-    close(fd);
+    close(c->fd);
     return -1;
   }
 
-  ret = bind(fd, (struct sockaddr*)&c->src, sizeof(c->src));
+  ret = bind(c->fd, (struct sockaddr*)&c->src, sizeof(c->src));
   if (ret != 0) {
     perror("Failed to bind to the source address");
-    close(fd);
+    close(c->fd);
     return -1;
   }
+  add_active_fd(c->fd);
 
-  return fd;
+  // Check that the server responds
+  send_keepalive(c);
+  char buf[MTU];
+  int n = recvfrom(c->fd, &buf, MTU, 0, NULL, NULL);
+  if (n > 0) {
+    if (is_srtla_keepalive(buf)) {
+      fprintf(stderr, "connected\n");
+      return 0;
+    }
+  }
+  fprintf(stderr, "no reply\n");
+
+  return -1;
 }
 
-int open_conns(char *source_ip_file) {
+int setup_conns(char *source_ip_file) {
   FILE *config = fopen(source_ip_file, "r");
   if (config == NULL) {
     perror("Failed to open the source ip list file: ");
     exit_help();
   }
 
-  int total_connected = 0;
+  int count = 0;
   char *line = NULL;
   size_t line_len = 0;
   while(getline(&line, &line_len, config) >= 0) {
@@ -205,26 +230,45 @@ int open_conns(char *source_ip_file) {
     c->window = WINDOW_DEF * WINDOW_MULT;
 
     int ret = parse_ip(&c->src, line);
-    if (ret != 0) {
-      free(c);
-    } else {
-      fprintf(stderr, "Connecting from %s: ", line);
-
-      int fd = open_conn(c);
-      if (fd >= 0) {
-        fprintf(stderr, "done\n");
-        c->fd = fd;
-        total_connected++;
-        add_active_fd(fd);
-        send_keepalive(c);
-      }
-
+    if (ret == 0) {
       conns = c;
+      count++;
+    } else {
+      free(c);
     }
   }
   if (line) free(line);
-  
-  return total_connected;
+
+  fclose(config);
+
+  return count;
+}
+
+int open_conns(char *host, char *port) {
+  struct addrinfo hints;
+  struct addrinfo *addrs;
+  memset(&hints, 0, sizeof(hints));
+  hints.ai_family = AF_INET;
+  hints.ai_socktype = SOCK_DGRAM;
+  int ret = getaddrinfo(host, port, &hints, &addrs);
+  if (ret != 0) return -1;
+
+  int connected = 0;
+  for (struct addrinfo *addr = addrs; addr != NULL; addr = addr->ai_next) {
+    memcpy(&srtla_addr, addr->ai_addr, addr->ai_addrlen);
+
+    for (conn_t *c = conns; c != NULL; c = c->next) {
+      int ret = open_conn(c);
+      if (ret >= 0) {
+        connected++;
+      }
+    }
+    if (connected > 0) break;
+  }
+
+  freeaddrinfo(addrs);
+
+  return connected;
 }
 
 conn_t *select_conn() {
@@ -273,12 +317,12 @@ conn_t *select_conn() {
 void handle_srt_data(int fd) {
   char buf[MTU];
   socklen_t addr_len = sizeof(srt_addr);
-  int n = recvfrom(fd, &buf, MTU, 0, (struct sockaddr *) &srt_addr, &addr_len);
+  int n = recvfrom(fd, &buf, MTU, 0, &srt_addr, &addr_len);
 
   conn_t *c = select_conn();
   if (c) {
     int32_t sn = get_srt_sn(buf);
-    int ret = sendto(c->fd, &buf, n, 0, (struct sockaddr *) &srtla_addr, addr_len);
+    int ret = sendto(c->fd, &buf, n, 0, &srtla_addr, addr_len);
     if (ret == n) {
       if (sn >= 0) {
         reg_pkt(c, sn);
@@ -389,11 +433,17 @@ void handle_srtla_data(conn_t *c) {
   } // switch
 
   socklen_t addr_len = sizeof(srt_addr);
-  sendto(listenfd, &buf, n, 0, (struct sockaddr *) &srt_addr, addr_len);
+  sendto(listenfd, &buf, n, 0, &srt_addr, addr_len);
 }
 
 int main(int argc, char **argv) {
   if (argc != 5) exit_help();
+
+  int conn_count = setup_conns(argv[4]);
+  if (conn_count <= 0) {
+    fprintf(stderr, "Failed to parse any IP addresses in %s\n", argv[4]);
+    exit(EXIT_FAILURE);
+  }
 
   struct sockaddr_in listen_addr;
 
@@ -416,27 +466,21 @@ int main(int argc, char **argv) {
   }
   add_active_fd(listenfd);
 
-  signal(SIGALRM, alarm_handler);
-  alarm(1);
-
-  int ret = parse_ip_port(&srtla_addr, argv[2], argv[3]);
-  if (ret != 0) {
-    fprintf(stderr, "Failed to parse the target IP and/or port\n\n");
-    exit_help();
-  }
-
-  int connected = open_conns(argv[4]);
+  int connected = open_conns(argv[2], argv[3]);
   if (connected < 1) {
     fprintf(stderr, "Failed to establish any initial connections, aborting\n");
     exit(EXIT_FAILURE);
   }
+
+  signal(SIGALRM, alarm_handler);
+  alarm(1);
 
   int info_int = PKT_INT;
 
   while(1) {
     fd_set read_fds = active_fds;
 
-    ret = select(FD_SETSIZE, &read_fds, NULL, NULL, NULL);
+    int ret = select(FD_SETSIZE, &read_fds, NULL, NULL, NULL);
 
     if (do_send_keepalive) {
       send_keepalive_all();

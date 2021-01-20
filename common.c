@@ -46,16 +46,6 @@ int parse_port(char *port_str) {
   return port;
 }
 
-int parse_ip_port(struct sockaddr_in *addr, char *ip_str, char *port_str) {
-  if (parse_ip(addr, ip_str) != 0) return -1;
-
-  int port = parse_port(port_str);
-  if (port < 0) return -2;
-  addr->sin_port = htons(port);
-
-  return 0;
-}
-
 extern fd_set active_fds;
 extern int max_act_fd;
 int add_active_fd(int fd) {
@@ -63,6 +53,14 @@ int add_active_fd(int fd) {
 
   if (fd > max_act_fd) max_act_fd = fd;
   FD_SET(fd, &active_fds);
+
+  return 0;
+}
+
+int remove_active_fd(int fd) {
+  if (fd < 0) return -1;
+
+  FD_CLR(fd, &active_fds);
 
   return 0;
 }

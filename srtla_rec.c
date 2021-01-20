@@ -22,6 +22,7 @@
 #include <assert.h>
 #include <unistd.h>
 #include <endian.h>
+#include <netdb.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -32,7 +33,7 @@
 #define RECV_ACK_INT 10
 typedef struct srtla_conn {
   struct srtla_conn *next;
-  struct sockaddr_in addr;
+  struct sockaddr addr;
   int recv_idx;
   uint32_t recv_log[RECV_ACK_INT];
 } srtla_conn_t;
@@ -43,7 +44,8 @@ typedef struct {
 } srtla_ack_pkt;
 
 int strla_fd, srt_fd;
-struct sockaddr_in srtla_addr, srt_addr;
+struct sockaddr srtla_addr;
+struct addrinfo *srt_addrs;
 srtla_conn_t *srtla_conns = NULL;
 fd_set active_fds;
 int max_act_fd = -1;
@@ -72,7 +74,7 @@ void handle_srt_data(int fd) {
   }
 }
 
-srtla_conn_t *get_conn(struct sockaddr_in *addr, size_t len) {
+srtla_conn_t *get_conn(struct sockaddr *addr, size_t len) {
   for (srtla_conn_t *i = srtla_conns; i != NULL; i = i->next) {
     int ret = memcmp(&i->addr, addr, len);
     if (ret == 0) return i;
@@ -106,12 +108,12 @@ void handle_srtla_data(int fd) {
   char buf[MTU];
 
   socklen_t addr_len = sizeof(srtla_addr);
-  int n = recvfrom(fd, &buf, MTU, 0, (struct sockaddr *) &srtla_addr, &addr_len);
+  int n = recvfrom(fd, &buf, MTU, 0, &srtla_addr, &addr_len);
 
   // Resend SRTLA keep-alive packets to the sender
   if (is_srtla_keepalive(buf)) {
     addr_len = sizeof(srtla_addr);
-    int ret = sendto(fd, &buf, n, 0, (struct sockaddr *) &srtla_addr, addr_len);
+    int ret = sendto(fd, &buf, n, 0, &srtla_addr, addr_len);
     assert(ret == n);
     return;
   }
@@ -124,8 +126,13 @@ void handle_srtla_data(int fd) {
   }
 
   // Forward the packet to SRT
-  int ret = sendto(srt_fd, &buf, n, 0, (struct sockaddr *) &srt_addr, addr_len);
-  assert(ret == n);
+  for (struct addrinfo *addr = srt_addrs; addr != NULL; addr = addr->ai_next) {
+    int ret = sendto(srt_fd, &buf, n, 0, addr->ai_addr, addr->ai_addrlen);
+    if (ret >= 0) {
+      assert(ret == n);
+      break;
+    }
+  }
 }
 
 int main(int argc, char **argv) {
@@ -152,9 +159,13 @@ int main(int argc, char **argv) {
   }
   add_active_fd(strla_fd);
 
-  int ret = parse_ip_port(&srt_addr, argv[2], argv[3]);
+  struct addrinfo hints;
+  memset(&hints, 0, sizeof(hints));
+  hints.ai_family = AF_INET;
+  hints.ai_socktype = SOCK_DGRAM;
+  int ret = getaddrinfo(argv[2], argv[3], &hints, &srt_addrs);
   if (ret != 0) {
-    fprintf(stderr, "Failed to parse the SRT IP and/or port\n");
+    fprintf(stderr, "Failed to parse the SRT address and/or port\n");
     exit_help();
   }
 
