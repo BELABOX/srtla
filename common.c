@@ -1,6 +1,6 @@
 /*
     srtla - SRT transport proxy with link aggregation
-    Copyright (C) 2020 BELABOX project
+    Copyright (C) 2020-2021 BELABOX project
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU Affero General Public License as published by
@@ -21,12 +21,25 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <time.h>
 
 #include "common.h"
 
 void exit_help() {
   print_help();
   exit(EXIT_FAILURE);
+}
+
+#define ADDR_BUF_SZ 50
+char _global_addr_buf[ADDR_BUF_SZ];
+const char *print_addr(struct sockaddr *addr) {
+  struct sockaddr_in *ain = (struct sockaddr_in *)addr;
+  return inet_ntop(ain->sin_family, &ain->sin_addr, _global_addr_buf, ADDR_BUF_SZ);
+}
+
+int port_no(struct sockaddr *addr) {
+  struct sockaddr_in *ain = (struct sockaddr_in *)addr;
+  return ntohs(ain->sin_port);
 }
 
 int parse_ip(struct sockaddr_in *addr, char *ip_str) {
@@ -46,41 +59,58 @@ int parse_port(char *port_str) {
   return port;
 }
 
-extern fd_set active_fds;
-extern int max_act_fd;
-int add_active_fd(int fd) {
-  if (fd < 0) return -1;
+int get_seconds(time_t *s) {
+  struct timespec ts;
+  int ret = clock_gettime(CLOCK_MONOTONIC_COARSE, &ts);
+  if (ret != 0) return -1;
+  *s = ts.tv_sec;
+  return 0;
+}
 
-  if (fd > max_act_fd) max_act_fd = fd;
-  FD_SET(fd, &active_fds);
+int get_ms(uint64_t *ms) {
+  struct timespec ts;
+  int ret = clock_gettime(CLOCK_MONOTONIC_COARSE, &ts);
+  if (ret != 0) return -1;
+  *ms = ((uint64_t)(ts.tv_sec)) * 1000 + ((uint64_t)(ts.tv_nsec)) / 1000 / 1000;
 
   return 0;
 }
 
-int remove_active_fd(int fd) {
-  if (fd < 0) return -1;
+int32_t get_srt_sn(void *pkt, int n) {
+  if (n < 4) return -1;
 
-  FD_CLR(fd, &active_fds);
-
-  return 0;
-}
-
-int32_t get_srt_sn(void *pkt) {
   uint32_t sn = be32toh(*((uint32_t *)pkt));
   if ((sn & (1 << 31)) == 0) {
     return (int32_t)sn;
   }
+
   return -1;
 }
 
-uint16_t get_srt_type(void *pkt) {
+uint16_t get_srt_type(void *pkt, int n) {
+  if (n < 2) return 0;
   return be16toh(*((uint16_t *)pkt));
 }
 
-int is_srt_ack(void *pkt) {
-  return get_srt_type(pkt) == SRT_TYPE_ACK;
+int is_srt_ack(void *pkt, int n) {
+  return get_srt_type(pkt, n) == SRT_TYPE_ACK;
 }
 
-int is_srtla_keepalive(void *pkt) {
-  return get_srt_type(pkt) == SRTLA_TYPE_KEEPALIVE;
+int is_srtla_keepalive(void *pkt, int n) {
+  return get_srt_type(pkt, n) == SRTLA_TYPE_KEEPALIVE;
+}
+
+int is_srtla_reg1(void *pkt, int len) {
+  if (len != SRTLA_TYPE_REG1_LEN) return 0;
+  return get_srt_type(pkt, len) == SRTLA_TYPE_REG1;
+}
+
+int is_srtla_reg2(void *pkt, int len) {
+  if (len != SRTLA_TYPE_REG2_LEN) return 0;
+  return get_srt_type(pkt, len) == SRTLA_TYPE_REG2;
+}
+
+int is_srtla_reg3(void *pkt, int len) {
+  if (len != SRTLA_TYPE_REG3_LEN) return 0;
+  return get_srt_type(pkt, len) == SRTLA_TYPE_REG3;
 }

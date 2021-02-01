@@ -68,3 +68,27 @@ How does it work?
 The core idea is that srtla keeps track of the number of packets in flight (sent but unacknowledged) for each link, together with a dynamic window size that tracks the capacity of each link - similarly to TCP congestion control. These are used together to balance the traffic through each link proportionally to its capacity. However, note that no congestion control is applied.
 
 This assumes that you're familiar with the [SRT spec](https://tools.ietf.org/html/draft-sharabayko-mops-srt-00). TODO: technical description in more detail.
+
+**srtla v2**
+
+The main improvement in srtla v2 is that it supports multiple *srtla senders* connecting to a single *srtla receiver* by establishing *connection groups* - note that these are different from the experimental *socket groups* in SRT. To support this feature, I've introduced a 2-phase connection registration phase.
+
+Normal registration:
+
+Sender (conn 0):   `SRTLA_REG1(sender_id = SRTLA_ID_LEN bytes sender-generated random id)`
+Receiver:          `SRTLA_REG2(full_id = sender_id with the last SRTLA_ID_LEN/2 bytes replaced with receiver-generated values)`
+Sender (conn 0):   `SRTLA_REG2(full_id)`
+Receiver:          `SRTLA_REG3`
+[...]
+Sender (conn n):   `SRTLA_REG2(full_id)`
+Receiver:          `SRTLA_REG3`
+
+
+Error responses are only sent from the *receiver*. If the *sender* encounters an error, it should just abandon the relevant *connection group* or *connection*, and it will be garbage collected on the receiver side after some time. Possible error responses are sent after receiving a `SRTLA_REG1` or `SRTLA_REG2` request.
+
+* `SRTLA_REG_ERR` - Can be sent in response to any `SRTLA_REG` command. Operation temporarily failed, back off and retry later.
+* `SRTLA_REG_NAK` - Sent in response to `SRTLA_REG1`. Operation refused, give up. Either incompatible or access denied. A human-readable error message may be appended after the header.
+* `SRTLA_REG_NGP` - Sent in response to `SRTLA_REG2` with an invalid ID. Register the group again with `SRTLA_REG1`
+
+TODO:
+* clean up the printed messages, separate in error / verbose / debugging
