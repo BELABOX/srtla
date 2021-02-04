@@ -62,7 +62,6 @@ struct sockaddr srtla_addr, srt_addr;
 const socklen_t addr_len = sizeof(srtla_addr);
 conn_t *conns = NULL;
 int listenfd;
-int do_housekeeping = 1;
 int active_connections = 0;
 
 char srtla_id[SRTLA_ID_LEN];
@@ -99,10 +98,6 @@ int remove_active_fd(int fd) {
 Misc helper functions
 
 */
-void alarm_handler() {
-  do_housekeeping = 1;
-}
-
 void print_help() {
   fprintf(stderr, "Syntax: srtla_send SRT_LISTEN_PORT SRTLA_HOST SRTLA_PORT BIND_IPS_FILE\n");
 }
