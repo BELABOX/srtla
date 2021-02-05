@@ -75,13 +75,13 @@ The main improvement in srtla v2 is that it supports multiple *srtla senders* co
 
 Normal registration:
 
-Sender (conn 0):   `SRTLA_REG1(sender_id = SRTLA_ID_LEN bytes sender-generated random id)`
-Receiver:          `SRTLA_REG2(full_id = sender_id with the last SRTLA_ID_LEN/2 bytes replaced with receiver-generated values)`
-Sender (conn 0):   `SRTLA_REG2(full_id)`
-Receiver:          `SRTLA_REG3`
-[...]
-Sender (conn n):   `SRTLA_REG2(full_id)`
-Receiver:          `SRTLA_REG3`
+* Sender (conn 0):   `SRTLA_REG1(sender_id = SRTLA_ID_LEN bytes sender-generated random id)`
+* Receiver:          `SRTLA_REG2(full_id = sender_id with the last SRTLA_ID_LEN/2 bytes replaced with receiver-generated values)`
+* Sender (conn 0):   `SRTLA_REG2(full_id)`
+* Receiver:          `SRTLA_REG3`
+* [...]
+* Sender (conn n):   `SRTLA_REG2(full_id)`
+* Receiver:          `SRTLA_REG3`
 
 
 Error responses are only sent from the *receiver*. If the *sender* encounters an error, it should just abandon the relevant *connection group* or *connection*, and it will be garbage collected on the receiver side after some time. Possible error responses are sent after receiving a `SRTLA_REG1` or `SRTLA_REG2` request.
