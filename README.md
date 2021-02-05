@@ -89,6 +89,3 @@ Error responses are only sent from the *receiver*. If the *sender* encounters an
 * `SRTLA_REG_ERR` - Can be sent in response to any `SRTLA_REG` command. Operation temporarily failed, back off and retry later.
 * `SRTLA_REG_NAK` - Sent in response to `SRTLA_REG1`. Operation refused, give up. Either incompatible or access denied. A human-readable error message may be appended after the header.
 * `SRTLA_REG_NGP` - Sent in response to `SRTLA_REG2` with an invalid ID. Register the group again with `SRTLA_REG1`
-
-TODO:
-* clean up the printed messages, separate in error / verbose / debugging
