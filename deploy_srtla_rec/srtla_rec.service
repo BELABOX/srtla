@@ -1,0 +1,15 @@
+[Unit]
+Description=srtla receive service
+After=network.target
+
+[Service]
+EnvironmentFile=/etc/default/srtla_rec
+ExecStart=/usr/local/bin/srtla_rec $SRTLA_LISTEN_PORT $SRT_ADDR
+KillMode=process
+Restart=on-failure
+NoNewPrivileges=true
+User=nobody
+Group=nogroup
+
+[Install]
+WantedBy=multi-user.target

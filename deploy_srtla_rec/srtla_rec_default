@@ -1,0 +1,3 @@
+# Options to pass to srtla_rec
+SRTLA_LISTEN_PORT="10000"
+SRT_ADDR="127.0.0.1 7000"
