@@ -1,6 +1,8 @@
 srtla - SRT transport proxy with link aggregation for connection bonding
 =====
 
+*This is srtla2, incompatible with previous versions of srtla. Remember to update srtla both on the receiver and the sender*. srtla2 brings srtla_rec support for multiple simultaneous SRT streams, and many reliability improvements both for `srtla_send` and `srtla_rec`.
+
 This tool can transport [SRT](https://github.com/Haivision/srt/) traffic over multiple network links for capacity aggregation and redundancy. Traffic is balanced dynamically, depending on the network conditions. The intended application is bonding mobile modems for live streaming.
 
 This application is experimental. Be prepared to troubleshoot it and experiment with various settings for your needs.
