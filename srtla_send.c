@@ -283,8 +283,11 @@ void register_srtla_ack(int32_t ack) {
         break;
       }
     }
-    c->window += 1;
-    c->window = min(c->window, WINDOW_MAX*WINDOW_MULT);
+
+    if (c->last_rcvd != 0) {
+      c->window += 1;
+      c->window = min(c->window, WINDOW_MAX*WINDOW_MULT);
+    }
   }
 }
 
