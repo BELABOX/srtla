@@ -52,11 +52,16 @@ typedef struct conn {
   int fd;
   time_t last_rcvd;
   struct sockaddr src;
+  int removed;
   int in_flight_pkts;
   int window;
   int pkt_idx;
   int pkt_log[PKT_LOG_SZ];
 } conn_t;
+
+char *source_ip_file = NULL;
+
+int do_update_conns = 0;
 
 struct sockaddr srtla_addr, srt_addr;
 const socklen_t addr_len = sizeof(srtla_addr);
@@ -399,6 +404,16 @@ void handle_srtla_data(conn_t *c) {
 Connection and socket management
 
 */
+conn_t *conn_find_by_src(struct sockaddr *src) {
+  for (conn_t *c = conns; c != NULL; c = c->next) {
+    if (memcmp(src, &c->src, sizeof(*src)) == 0) {
+      return c;
+    }
+  }
+
+  return NULL;
+}
+
 int setup_conns(char *source_ip_file) {
   FILE *config = fopen(source_ip_file, "r");
   if (config == NULL) {
@@ -415,20 +430,28 @@ int setup_conns(char *source_ip_file) {
       *nl = '\0';
     }
 
-    conn_t *c = calloc(1, sizeof(conn_t));
-    assert(c != NULL);
+    struct sockaddr src;
 
-    c->fd = -1;
-    c->next = conns;
-
-    c->window = WINDOW_DEF * WINDOW_MULT;
-
-    int ret = parse_ip((struct sockaddr_in *)&c->src, line);
+    int ret = parse_ip((struct sockaddr_in *)&src, line);
     if (ret == 0) {
-      conns = c;
-      count++;
-    } else {
-      free(c);
+      conn_t *c = conn_find_by_src(&src);
+      if (c == NULL) {
+        conn_t *c = calloc(1, sizeof(conn_t));
+        assert(c != NULL);
+
+        c->src = src;
+        c->fd = -1;
+        c->window = WINDOW_DEF * WINDOW_MULT;
+
+        c->next = conns;
+        conns = c;
+
+        count++;
+
+        printf("Added connection via %s (%p)\n", print_addr(&c->src), c);
+      } else {
+        c->removed = 0;
+      }
     }
   }
   if (line) free(line);
@@ -436,6 +459,34 @@ int setup_conns(char *source_ip_file) {
   fclose(config);
 
   return count;
+}
+
+void update_conns(char *source_ip_file) {
+  for (conn_t *c = conns; c != NULL; c = c->next) {
+    c->removed = 1;
+  }
+
+  setup_conns(source_ip_file);
+
+  conn_t **prev = &conns;
+  conn_t *next;
+  for (conn_t *c = conns; c != NULL; c = next) {
+    next = c->next;
+    if (c->removed) {
+      printf("Removed connection via %s (%p)\n", print_addr(&c->src), c);
+
+      remove_active_fd(c->fd);
+      close(c->fd);
+      *prev = c->next;
+      free(c);
+    } else {
+      prev = &c->next;
+    }
+  }
+}
+
+void schedule_update_conns(int signal) {
+  do_update_conns = 1;
 }
 
 int open_socket(conn_t *c, int quiet) {
@@ -595,9 +646,10 @@ void connection_housekeeping() {
 int main(int argc, char **argv) {
   if (argc != 5) exit_help();
 
-  int conn_count = setup_conns(ARG_IPS_FILE);
+  source_ip_file = ARG_IPS_FILE;
+  int conn_count = setup_conns(source_ip_file);
   if (conn_count <= 0) {
-    fprintf(stderr, "Failed to parse any IP addresses in %s\n", ARG_IPS_FILE);
+    fprintf(stderr, "Failed to parse any IP addresses in %s\n", source_ip_file);
     exit(EXIT_FAILURE);
   }
 
@@ -637,9 +689,16 @@ int main(int argc, char **argv) {
     exit(EXIT_FAILURE);
   }
 
+  signal(SIGHUP, schedule_update_conns);
+
   int info_int = LOG_PKT_INT;
 
   while(1) {
+    if (do_update_conns) {
+      update_conns(source_ip_file);
+      do_update_conns = 0;
+    }
+
     connection_housekeeping();
 
     fd_set read_fds = active_fds;
