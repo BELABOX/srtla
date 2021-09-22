@@ -1,4 +1,5 @@
-CFLAGS=-g -O2 -Wall
+VERSION=$(shell git rev-parse --short HEAD)
+CFLAGS=-g -O2 -Wall -DVERSION=\"$(VERSION)\"
 
 all: srtla_send srtla_rec
 

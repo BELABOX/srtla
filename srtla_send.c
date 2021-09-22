@@ -104,7 +104,9 @@ Misc helper functions
 
 */
 void print_help() {
-  fprintf(stderr, "Syntax: srtla_send SRT_LISTEN_PORT SRTLA_HOST SRTLA_PORT BIND_IPS_FILE\n");
+  fprintf(stderr,
+          "Syntax: srtla_send SRT_LISTEN_PORT SRTLA_HOST SRTLA_PORT BIND_IPS_FILE\n\n"
+          "-v      Print the version and exit\n");
 }
 
 
@@ -644,6 +646,10 @@ void connection_housekeeping() {
 #define ARG_SRTLA_PORT  (argv[3])
 #define ARG_IPS_FILE    (argv[4])
 int main(int argc, char **argv) {
+  if (argc == 2 && strcmp(argv[1], "-v") == 0) {
+    printf(VERSION "\n");
+    exit(0);
+  }
   if (argc != 5) exit_help();
 
   source_ip_file = ARG_IPS_FILE;

@@ -97,7 +97,9 @@ Misc helper functions
 
 */
 void print_help() {
-  fprintf(stderr, "Syntax: srtla_rec SRTLA_LISTEN_PORT SRT_HOST SRT_PORT\n");
+  fprintf(stderr,
+          "Syntax: srtla_rec [-v] SRTLA_LISTEN_PORT SRT_HOST SRT_PORT\n\n"
+          "-v      Print the version and exit\n");
 }
 
 int const_time_cmp(const void *a, const void *b, int len) {
@@ -626,6 +628,10 @@ int resolve_srt_addr(char *host, char *port) {
 #define ARG_SRT_PORT    (argv[3])
 int main(int argc, char **argv) {
   // Command line argument parsing
+  if (argc == 2 && strcmp(argv[1], "-v") == 0) {
+    printf(VERSION "\n");
+    exit(0);
+  }
   if (argc != 4) exit_help();
 
   struct sockaddr_in listen_addr;
