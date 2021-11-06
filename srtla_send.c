@@ -33,6 +33,7 @@
 
 #define PKT_LOG_SZ 256
 #define TIMEOUT 4
+#define IDLE_TIME 1
 
 #define min(a, b) ((a < b) ? a : b)
 #define max(a, b) ((a > b) ? a : b)
@@ -51,6 +52,7 @@ typedef struct conn {
   struct conn *next;
   int fd;
   time_t last_rcvd;
+  time_t last_sent;
   struct sockaddr src;
   int removed;
   int in_flight_pkts;
@@ -208,6 +210,10 @@ conn_t *select_conn() {
       min_c = c;
       max_score = score;
     }
+  }
+
+  if (min_c) {
+    min_c->last_sent = t;
   }
 
   return min_c;
@@ -613,6 +619,7 @@ void connection_housekeeping() {
         info("%s (%p): connection failed, attempting to reconnect\n",
              print_addr(&c->src), c);
         c->last_rcvd = 0;
+        c->last_sent = 0;
         c->window = WINDOW_MIN * WINDOW_MULT;
         c->in_flight_pkts = 0;
         for (int i = 0; i < PKT_LOG_SZ; i++) {
@@ -629,7 +636,7 @@ void connection_housekeeping() {
        then it's active */
     active_connections++;
 
-    if (c->last_rcvd < time) {
+    if ((c->last_sent + IDLE_TIME) < time) {
       send_keepalive(c);
     }
   }
