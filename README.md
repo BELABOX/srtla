@@ -1,3 +1,6 @@
+The server component - srtla_rec - in this repository is unsupported, no longer under development and not suitable for production deployment. Sign up for a [BELABOX cloud](https://belabox.net/cloud) account to benefit from the latest improvements, available on a global network of relay servers.
+=====
+
 srtla - SRT transport proxy with link aggregation for connection bonding
 =====
 
