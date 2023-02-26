@@ -32,7 +32,8 @@
 #include "common.h"
 
 #define PKT_LOG_SZ 256
-#define TIMEOUT 4
+#define CONN_TIMEOUT 4
+#define GLOBAL_TIMEOUT 10
 #define IDLE_TIME 1
 
 #define min(a, b) ((a < b) ? a : b)
@@ -200,7 +201,7 @@ conn_t *select_conn() {
       continue;
     }*/
 
-    if (c->last_rcvd < (t-TIMEOUT)) {
+    if (c->last_rcvd < (t-CONN_TIMEOUT)) {
       debug("%s (%p): is timed out, ignoring it\n", print_addr(&c->src), c);
       continue;
     }
@@ -594,6 +595,7 @@ void send_keepalive(conn_t *c) {
 
 #define HOUSEKEEPING_INT 1000 // ms
 void connection_housekeeping() {
+  static uint64_t all_failed_at = 0;
   /* We use milliseconds here because with a seconds timer we may be
      resending a second REG2 very soon after the first one, depending
      on when the first execution happens within the seconds interval */
@@ -612,7 +614,7 @@ void connection_housekeeping() {
       continue;
     }
 
-    if (c->last_rcvd < (time-TIMEOUT)) {
+    if (c->last_rcvd < (time-CONN_TIMEOUT)) {
       /* When we first detect the connection having failed,
          we reset its status and print a message */
       if (c->last_rcvd > 0) {
@@ -632,7 +634,7 @@ void connection_housekeeping() {
       continue;
     }
 
-    /* If a connection has received data in the last REG_TIMEOUT seconds,
+    /* If a connection has received data in the last CONN_TIMEOUT seconds,
        then it's active */
     active_connections++;
 
@@ -643,6 +645,14 @@ void connection_housekeeping() {
 
   if (last_ran > 0 && active_connections == 0) {
     err("warning: no available connections\n");
+    if (all_failed_at == 0) {
+      all_failed_at = ms;
+    } else if (ms > (all_failed_at + (GLOBAL_TIMEOUT * 1000))) {
+      err("Failed to re-establish any connections. Giving up...\n");
+      exit(EXIT_FAILURE);
+    }
+  } else {
+    all_failed_at = 0;
   }
 
   last_ran = ms;
