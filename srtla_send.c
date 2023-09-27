@@ -33,6 +33,7 @@
 
 #define PKT_LOG_SZ 256
 #define CONN_TIMEOUT 4
+#define REG2_TIMEOUT 4
 #define GLOBAL_TIMEOUT 10
 #define IDLE_TIME 1
 
@@ -66,11 +67,17 @@ char *source_ip_file = NULL;
 
 int do_update_conns = 0;
 
+struct addrinfo *addrs;
+
 struct sockaddr srtla_addr, srt_addr;
 const socklen_t addr_len = sizeof(srtla_addr);
 conn_t *conns = NULL;
 int listenfd;
 int active_connections = 0;
+int has_connected = 0;
+
+conn_t *pending_reg2_conn = NULL;
+time_t pending_reg2_timeout = 0;
 
 char srtla_id[SRTLA_ID_LEN];
 
@@ -118,7 +125,7 @@ void print_help() {
 srtla registration helpers
 
 */
-int try_reg1(conn_t *c) {
+int send_reg1(conn_t *c) {
   if (c->fd < 0) return -1;
 
   char buf[MTU];
@@ -129,23 +136,7 @@ int try_reg1(conn_t *c) {
   int ret = sendto(c->fd, buf, SRTLA_TYPE_REG1_LEN, 0, &srtla_addr, addr_len);
   if (ret != SRTLA_TYPE_REG1_LEN) return -1;
 
-  int timeout = 5;
-  while(timeout) {
-    int n = recvfrom(c->fd, buf, MTU, 0, NULL, NULL);
-    if (is_srtla_reg2(buf, n)) {
-      char *id = &buf[2];
-      if (memcmp(id, srtla_id, SRTLA_ID_LEN/2) != 0) {
-        err("%s (%p): got a mismatching ID in SRTLA_REG2\n",
-            print_addr(&c->src), c);
-        return -1;
-      }
-      memcpy(srtla_id, id, SRTLA_ID_LEN);
-      return 0;
-    }
-    timeout--;
-  }
-
-  return -1;
+  return 0;
 }
 
 int send_reg2(conn_t *c) {
@@ -176,6 +167,10 @@ void reg_pkt(conn_t *c, int32_t packet) {
   c->in_flight_pkts++;
 }
 
+int conn_timed_out(conn_t *c, time_t ts) {
+  return (c->last_rcvd + CONN_TIMEOUT) < ts;
+}
+
 conn_t *select_conn() {
   conn_t *min_c = NULL;
   int max_score = -1;
@@ -201,7 +196,7 @@ conn_t *select_conn() {
       continue;
     }*/
 
-    if (c->last_rcvd < (t-CONN_TIMEOUT)) {
+    if (conn_timed_out(c, t)) {
       debug("%s (%p): is timed out, ignoring it\n", print_addr(&c->src), c);
       continue;
     }
@@ -336,28 +331,46 @@ void handle_srtla_data(conn_t *c) {
   int n = recvfrom(c->fd, &buf, MTU, 0, NULL, NULL);
   if (n <= 0) return;
 
+  time_t ts;
+  get_seconds(&ts);
+
   uint16_t packet_type = get_srt_type(buf, n);
 
   /* Handling NGPs separately because we don't want them to update last_rcvd
      Otherwise they could be keeping failed connections marked active */
   if (packet_type == SRTLA_TYPE_REG_NGP) {
-    if (active_connections == 0) {
-      err("The connection group has failed, restarting all connections\n");
-      if (try_reg1(c) == 0) {
-        // Send reg2 on all the connections
-        for (conn_t *i = conns; i != NULL; i = i->next) {
-          send_reg2(i);
-        }
-        /* Increment active_connections directly, otherwise we might handle other NGPs
-           before send_keepalive_all() has a chance to update it. */
-        active_connections++;
-        get_seconds(&c->last_rcvd);
+    if (active_connections == 0 && pending_reg2_conn == NULL) {
+      if (send_reg1(c) == 0) {
+
+        pending_reg2_conn = c;
+        pending_reg2_timeout = ts + REG2_TIMEOUT;
       }
+    }
+    return;
+
+  } else if (packet_type == SRTLA_TYPE_REG2) {
+    if (pending_reg2_conn == c) {
+      char *id = &buf[2];
+      if (memcmp(id, srtla_id, SRTLA_ID_LEN/2) != 0) {
+        err("%s (%p): got a mismatching ID in SRTLA_REG2\n",
+           print_addr(&c->src), c);
+        return;
+      }
+
+      info("%s (%p): connection group registered\n", print_addr(&c->src), c);
+      memcpy(srtla_id, id, SRTLA_ID_LEN);
+
+      /* Broadcast REG2 */
+      for (conn_t *i = conns; i != NULL; i = i->next) {
+        send_reg2(i);
+      }
+
+      pending_reg2_conn = NULL;
     }
     return;
   }
 
-  get_seconds(&c->last_rcvd);
+  c->last_rcvd = ts;
 
   switch(packet_type) {
     case SRT_TYPE_ACK: {
@@ -400,6 +413,7 @@ void handle_srtla_data(conn_t *c) {
       return; // don't send to SRT
 
     case SRTLA_TYPE_REG3:
+      has_connected = 1;
       info("%s (%p): connection established\n", print_addr(&c->src), c);
       return;
   } // switch
@@ -484,6 +498,10 @@ void update_conns(char *source_ip_file) {
     if (c->removed) {
       printf("Removed connection via %s (%p)\n", print_addr(&c->src), c);
 
+      if (c == pending_reg2_conn) {
+        pending_reg2_conn = NULL;
+      }
+
       remove_active_fd(c->fd);
       close(c->fd);
       *prev = c->next;
@@ -529,7 +547,7 @@ int open_socket(conn_t *c, int quiet) {
   ret = bind(fd, &c->src, sizeof(c->src));
   if (ret != 0) {
     if (!quiet) {
-      err("Failed to bind to the source address %s: ", print_addr(&c->src));
+      err("Failed to bind to the source address %s\n", print_addr(&c->src));
     }
     goto err;
   }
@@ -552,40 +570,19 @@ int open_conns(char *host, char *port) {
       opened++;
     }
   }
-  if (opened == 0) return 0;
-
-  // Resolve the address of the receiver
-  struct addrinfo hints;
-  struct addrinfo *addrs;
-  memset(&hints, 0, sizeof(hints));
-  hints.ai_family = AF_INET;
-  hints.ai_socktype = SOCK_DGRAM;
-  int ret = getaddrinfo(host, port, &hints, &addrs);
-  if (ret != 0) return 0;
-
-  // See if we can do a SRTLA REG1 + REG2 exchange to any of the resolved addresses
-  int connected = 0;
-  for (struct addrinfo *addr = addrs; addr != NULL; addr = addr->ai_next) {
-    memcpy(&srtla_addr, addr->ai_addr, addr->ai_addrlen);
-    info("Trying to connect to %s...\n", print_addr(addr->ai_addr));
-
-    for (conn_t *c = conns; c != NULL; c = c->next) {
-      if (try_reg1(c) == 0) {
-        connected = 1;
-        break;
-      }
-    }
-  }
-  freeaddrinfo(addrs);
-  return connected;
+  return opened;
 }
-
 
 /*
 
 Connection housekeeping
 
 */
+void set_srtla_addr(struct addrinfo *addr) {
+  memcpy(&srtla_addr, addr->ai_addr, addr->ai_addrlen);
+  info("Trying to connect to %s...\n", print_addr(&srtla_addr));
+}
+
 void send_keepalive(conn_t *c) {
   debug("%s (%p): sending keepalive\n", print_addr(&c->src), c);
   uint16_t pkt = htobe16(SRTLA_TYPE_KEEPALIVE);
@@ -608,13 +605,17 @@ void connection_housekeeping() {
 
   active_connections = 0;
 
+  if (pending_reg2_conn && time < pending_reg2_timeout) {
+    pending_reg2_conn = NULL;
+  }
+
   for (conn_t *c = conns; c != NULL; c = c->next) {
     if (c->fd < 0) {
       open_socket(c, 1);
       continue;
     }
 
-    if (c->last_rcvd < (time-CONN_TIMEOUT)) {
+    if (conn_timed_out(c, time)) {
       /* When we first detect the connection having failed,
          we reset its status and print a message */
       if (c->last_rcvd > 0) {
@@ -628,9 +629,14 @@ void connection_housekeeping() {
           c->pkt_log[i] = -1;
         }
       }
-      /* As the connection has timed out on our end, the receiver might have garbage
-         collected it. Try to re-establish it rather than send a keepalive */
-      send_reg2(c);
+
+      if (pending_reg2_conn == NULL) {
+        /* As the connection has timed out on our end, the receiver might have garbage
+           collected it. Try to re-establish it rather than send a keepalive */
+        send_reg2(c);
+      } else if (pending_reg2_conn == c) {
+        send_reg1(c);
+      }
       continue;
     }
 
@@ -643,13 +649,34 @@ void connection_housekeeping() {
     }
   }
 
-  if (last_ran > 0 && active_connections == 0) {
-    err("warning: no available connections\n");
+  if (active_connections == 0) {
     if (all_failed_at == 0) {
       all_failed_at = ms;
-    } else if (ms > (all_failed_at + (GLOBAL_TIMEOUT * 1000))) {
-      err("Failed to re-establish any connections. Giving up...\n");
-      exit(EXIT_FAILURE);
+    }
+
+    if (has_connected) {
+      err("warning: no available connections\n");
+    }
+
+    // Timeout when all connections have failed
+    if (ms > (all_failed_at + (GLOBAL_TIMEOUT * 1000))) {
+      if (has_connected) {
+        err("Failed to re-establish any connections to %s\n",
+            print_addr(&srtla_addr));
+        exit(EXIT_FAILURE);
+      }
+
+      err("Failed to establish any initial connections to %s\n",
+          print_addr(&srtla_addr));
+
+      // Walk through the list of resolved addresses
+      if (addrs->ai_next) {
+        addrs = addrs->ai_next;
+        set_srtla_addr(addrs);
+        all_failed_at = 0;
+      } else {
+        exit(EXIT_FAILURE);
+      }
     }
   } else {
     all_failed_at = 0;
@@ -707,10 +734,22 @@ int main(int argc, char **argv) {
 
   int connected = open_conns(ARG_SRTLA_HOST, ARG_SRTLA_PORT);
   if (connected < 1) {
-    fprintf(stderr, "Failed to establish any initial connections to %s:%s, aborting\n",
-                    ARG_SRTLA_HOST, ARG_SRTLA_PORT);
+    err("Failed to open and bind to any of the IP addresses in %s\n", source_ip_file);
     exit(EXIT_FAILURE);
   }
+
+  // Resolve the address of the receiver
+  struct addrinfo hints;
+  memset(&hints, 0, sizeof(hints));
+  hints.ai_family = AF_INET;
+  hints.ai_socktype = SOCK_DGRAM;
+  ret = getaddrinfo(ARG_SRTLA_HOST, ARG_SRTLA_PORT, &hints, &addrs);
+  if (ret != 0) {
+    err("Failed to resolve %s: %s\n", ARG_SRTLA_HOST, gai_strerror(ret));
+    exit(EXIT_FAILURE);
+  }
+
+  set_srtla_addr(addrs);
 
   signal(SIGHUP, schedule_update_conns);
 
