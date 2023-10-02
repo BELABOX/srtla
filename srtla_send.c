@@ -34,6 +34,7 @@
 #define PKT_LOG_SZ 256
 #define CONN_TIMEOUT 4
 #define REG2_TIMEOUT 4
+#define REG3_TIMEOUT 4
 #define GLOBAL_TIMEOUT 10
 #define IDLE_TIME 1
 
@@ -77,7 +78,7 @@ int active_connections = 0;
 int has_connected = 0;
 
 conn_t *pending_reg2_conn = NULL;
-time_t pending_reg2_timeout = 0;
+time_t pending_reg_timeout = 0;
 
 char srtla_id[SRTLA_ID_LEN];
 
@@ -339,11 +340,15 @@ void handle_srtla_data(conn_t *c) {
   /* Handling NGPs separately because we don't want them to update last_rcvd
      Otherwise they could be keeping failed connections marked active */
   if (packet_type == SRTLA_TYPE_REG_NGP) {
-    if (active_connections == 0 && pending_reg2_conn == NULL) {
+    /* Only process NGPs if:
+       * we don't have any established connections
+       * and we don't already have a pending REG1->REG2 exhange in flight
+       * and we don't have any pending REG2->REG3 exchanges in flight
+    */
+    if (active_connections == 0 && pending_reg2_conn == NULL && ts > pending_reg_timeout) {
       if (send_reg1(c) == 0) {
-
         pending_reg2_conn = c;
-        pending_reg2_timeout = ts + REG2_TIMEOUT;
+        pending_reg_timeout = ts + REG2_TIMEOUT;
       }
     }
     return;
@@ -366,6 +371,7 @@ void handle_srtla_data(conn_t *c) {
       }
 
       pending_reg2_conn = NULL;
+      pending_reg_timeout = ts + REG3_TIMEOUT;
     }
     return;
   }
@@ -414,6 +420,7 @@ void handle_srtla_data(conn_t *c) {
 
     case SRTLA_TYPE_REG3:
       has_connected = 1;
+      active_connections++;
       info("%s (%p): connection established\n", print_addr(&c->src), c);
       return;
   } // switch
@@ -605,7 +612,7 @@ void connection_housekeeping() {
 
   active_connections = 0;
 
-  if (pending_reg2_conn && time > pending_reg2_timeout) {
+  if (pending_reg2_conn && time > pending_reg_timeout) {
     pending_reg2_conn = NULL;
   }
 
