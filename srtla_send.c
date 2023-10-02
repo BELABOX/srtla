@@ -605,7 +605,7 @@ void connection_housekeeping() {
 
   active_connections = 0;
 
-  if (pending_reg2_conn && time < pending_reg2_timeout) {
+  if (pending_reg2_conn && time > pending_reg2_timeout) {
     pending_reg2_conn = NULL;
   }
 
