@@ -38,6 +38,8 @@
 #define GLOBAL_TIMEOUT 10
 #define IDLE_TIME 1
 
+#define SEND_BUF_SIZE (8 * 1024 * 1024)
+
 #define min(a, b) ((a < b) ? a : b)
 #define max(a, b) ((a > b) ? a : b)
 #define min_max(a, l, h) (max(min((a), (h)), (l)))
@@ -531,22 +533,16 @@ int open_socket(conn_t *c, int quiet) {
   }
 
   // Set up the socket
-  int fd = socket(AF_INET, SOCK_DGRAM, 0);
+  int fd = socket(AF_INET, SOCK_DGRAM | SOCK_NONBLOCK, 0);
   if (fd < 0) {
     err("Failed to open a socket");
     return -1;
   }
-  struct timeval to;
-  to.tv_sec = 1;
-  to.tv_usec = 0;
-  int ret = setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &to, sizeof(to));
+
+  int bufsize = SEND_BUF_SIZE;
+  int ret = setsockopt(fd, SOL_SOCKET, SO_SNDBUF, &bufsize, sizeof(bufsize));
   if (ret != 0) {
-    err("Failed to set receive timeout");
-    goto err;
-  }
-  ret = setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &to, sizeof(to));
-  if (ret != 0) {
-    err("Failed to set send timeout");
+    err("failed to set send buffer size (%d)\n", bufsize);
     goto err;
   }
 
